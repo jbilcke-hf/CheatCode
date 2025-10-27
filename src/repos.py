@@ -120,43 +120,39 @@ def check_repo_has_code(repo_path: Path) -> bool:
     """
     Check if a repository contains actual source code files.
 
-    This function distinguishes between repos with real source code vs those
-    with only documentation, assets, or trivial example files.
+    This function checks for programming language files anywhere in the repository,
+    including examples/, demos/, and other subdirectories. It uses a lenient approach
+    and also checks README and .gitattributes for language indicators.
 
     Args:
         repo_path: Path to repository
 
     Returns:
-        True if substantial code files found
+        True if code files are found
     """
     code_extensions = {
         '.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.cpp', '.c', '.h',
         '.cs', '.go', '.rs', '.rb', '.php', '.swift', '.kt', '.scala',
-        '.m', '.mm', '.r', '.jl', '.dart', '.vue', '.svelte', '.sh', '.bash'
+        '.m', '.mm', '.r', '.jl', '.dart', '.vue', '.svelte', '.sh', '.bash',
+        '.ipynb'  # Include Jupyter notebooks
     }
 
-    # Directories to skip (typically contain examples/demos, not main source)
+    # Only skip build artifacts and dependencies - keep examples/demos/tests
     skip_dirs = {
         'node_modules', '.git', '__pycache__', '.pytest_cache', 'dist',
-        'build', 'venv', 'env', '.env', 'assets', 'images', 'docs',
-        'documentation', 'examples', 'demos', 'tests', 'test', '__tests__',
-        'screenshots', 'media', 'resources', 'static', 'public'
+        'build', 'venv', 'env', '.env', '.venv', 'site-packages'
     }
 
-    # Files that don't count as "real" code (common boilerplate/config)
-    trivial_files = {
-        '__init__.py', 'setup.py', 'conftest.py', 'webpack.config.js',
-        'babel.config.js', 'jest.config.js', 'vite.config.js', 'rollup.config.js'
-    }
+    # More lenient thresholds
+    MIN_FILE_SIZE = 50   # Minimum bytes (lowered from 100)
+    MIN_CODE_FILES = 1   # Just need 1 code file (lowered from 2)
+    MIN_TOTAL_SIZE = 100 # Minimum total bytes (lowered from 500)
 
-    MIN_FILE_SIZE = 100  # Minimum bytes to be considered substantial
-    MIN_CODE_FILES = 2   # Minimum number of substantial code files
-    MIN_TOTAL_SIZE = 500 # Minimum total bytes of code
-
-    substantial_files = []
+    code_files = []
     total_code_size = 0
 
     try:
+        # First, do a quick check for any code files
         for file in repo_path.rglob('*'):
             # Skip if not a file
             if not file.is_file():
@@ -166,70 +162,80 @@ def check_repo_has_code(repo_path: Path) -> bool:
             if file.suffix.lower() not in code_extensions:
                 continue
 
-            # Skip if in excluded directories
+            # Skip if in excluded directories (build artifacts only)
             if any(skip_dir in file.parts for skip_dir in skip_dirs):
                 continue
 
             # Get file size
             file_size = file.stat().st_size
 
-            # Skip empty or very small files
+            # Skip empty files but allow small files
             if file_size < MIN_FILE_SIZE:
                 continue
 
-            # Skip trivial boilerplate files
-            if file.name in trivial_files:
-                continue
+            # Count this as a code file
+            code_files.append(file)
+            total_code_size += file_size
 
-            # Read file content to verify it's not just comments/whitespace
-            try:
-                content = file.read_text(encoding='utf-8', errors='ignore')
-
-                # Remove comments and whitespace to check for actual code
-                lines = content.split('\n')
-                code_lines = []
-
-                for line in lines:
-                    stripped = line.strip()
-                    # Skip empty lines and common comment patterns
-                    if (stripped and
-                        not stripped.startswith('#') and
-                        not stripped.startswith('//') and
-                        not stripped.startswith('/*') and
-                        not stripped.startswith('*') and
-                        not stripped == '*/'):
-                        code_lines.append(stripped)
-
-                # If we have at least some non-comment lines, count this file
-                if len(code_lines) >= 5:  # At least 5 lines of actual code
-                    substantial_files.append(file)
-                    total_code_size += file_size
-
-            except Exception:
-                # If we can't read the file, skip it
-                continue
-
-        # Check if we have enough substantial code
-        has_code = (len(substantial_files) >= MIN_CODE_FILES and
+        # Check if we found code files
+        has_code = (len(code_files) >= MIN_CODE_FILES and
                    total_code_size >= MIN_TOTAL_SIZE)
 
-        if not has_code and len(substantial_files) > 0:
-            print(f"   ⚠️  Found {len(substantial_files)} code file(s) but below threshold for substantial code")
-            print(f"      Files: {[f.name for f in substantial_files[:3]]}")
+        if has_code:
+            print(f"   ✓ Found {len(code_files)} code file(s) ({total_code_size} bytes)")
+            if code_files:
+                # Show some example files
+                examples = [str(f.relative_to(repo_path)) for f in code_files[:5]]
+                print(f"      Examples: {', '.join(examples)}")
+            return True
 
-        return has_code
+        # Fallback: Check README for code/project indicators
+        readme_files = ['README.md', 'README.rst', 'README.txt', 'README']
+        for readme_name in readme_files:
+            readme_path = repo_path / readme_name
+            if readme_path.is_file():
+                try:
+                    content = readme_path.read_text(encoding='utf-8', errors='ignore').lower()
+                    # Look for programming/usage indicators
+                    code_indicators = [
+                        'python', 'javascript', 'typescript', 'java', 'c++', 'rust', 'go',
+                        'install', 'pip install', 'npm install', 'cargo build',
+                        'usage', 'quickstart', 'getting started', 'import ', 'from ',
+                        'require(', 'def ', 'class ', 'function ', 'const ',
+                        'example', 'tutorial', 'api', 'library', 'framework'
+                    ]
+                    if any(indicator in content for indicator in code_indicators):
+                        print(f"   ✓ README indicates this is a code project")
+                        return True
+                except Exception:
+                    pass
+
+        # Final fallback: Check .gitattributes for linguist data
+        gitattributes = repo_path / '.gitattributes'
+        if gitattributes.is_file():
+            try:
+                content = gitattributes.read_text(encoding='utf-8', errors='ignore')
+                if 'linguist-language' in content:
+                    print(f"   ✓ .gitattributes indicates programming language")
+                    return True
+            except Exception:
+                pass
+
+        print(f"   ⚠️  No substantial code detected (found {len(code_files)} file(s), {total_code_size} bytes)")
+        return False
 
     except Exception as e:
-        print(f"Warning: Error checking repo code: {e}")
-        return False
+        print(f"   ⚠️  Error checking repo code: {e}")
+        # When in doubt, assume it might have code (be lenient)
+        return True
 
 
 def detect_languages(repo_path: Path) -> List[str]:
     """
     Detect programming languages used in the repository.
 
-    Only counts substantial source code files, excluding examples, tests,
-    and documentation.
+    Scans all code files including examples/, scripts/, samples/, tests/, etc.
+    Only skips build artifacts and dependencies.
 
     Args:
         repo_path: Path to repository
@@ -262,18 +268,17 @@ def detect_languages(repo_path: Path) -> List[str]:
         '.vue': 'Vue',
         '.svelte': 'Svelte',
         '.sh': 'Shell',
-        '.bash': 'Shell'
+        '.bash': 'Shell',
+        '.ipynb': 'Python'  # Jupyter notebooks
     }
 
-    # Use same skip directories as check_repo_has_code()
+    # Only skip build artifacts and dependencies - keep examples/demos/tests/scripts/samples
     skip_dirs = {
         'node_modules', '.git', '__pycache__', '.pytest_cache', 'dist',
-        'build', 'venv', 'env', '.env', 'assets', 'images', 'docs',
-        'documentation', 'examples', 'demos', 'tests', 'test', '__tests__',
-        'screenshots', 'media', 'resources', 'static', 'public'
+        'build', 'venv', 'env', '.env', '.venv', 'site-packages'
     }
 
-    MIN_FILE_SIZE = 100  # Minimum bytes to be considered
+    MIN_FILE_SIZE = 50  # Minimum bytes to be considered (lowered for inclusivity)
 
     detected = set()
     try:
@@ -284,7 +289,7 @@ def detect_languages(repo_path: Path) -> List[str]:
             if file.suffix.lower() not in language_extensions:
                 continue
 
-            # Skip excluded directories
+            # Skip excluded directories (build artifacts only)
             if any(skip_dir in file.parts for skip_dir in skip_dirs):
                 continue
 
@@ -295,6 +300,6 @@ def detect_languages(repo_path: Path) -> List[str]:
             detected.add(language_extensions[file.suffix.lower()])
 
     except Exception as e:
-        print(f"Warning: Error detecting languages: {e}")
+        print(f"   ⚠️  Error detecting languages: {e}")
 
     return sorted(list(detected))

@@ -17,6 +17,7 @@ flagged/
 
 # Database
 database.yaml
+database_backup.yaml
 
 # Repos
 repositories/

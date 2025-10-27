@@ -203,32 +203,351 @@ Please proceed with adding this header now."""
 
         app_prompt = """Please create a Gradio app (app.py) that demonstrates this project.
 
-## Requirements
+## Step 1: Understand the Project (CRITICAL - DO THIS FIRST!)
+
+Before creating any code, you MUST:
+
+1. **Read the README.md thoroughly** (if it exists) to understand:
+   - What this project does (purpose and functionality)
+   - How to use it (quickstart, usage examples, API)
+   - Installation requirements (dependencies, setup steps)
+   - Any example code or demo instructions
+   - Entry points or main functions to call
+
+2. **Explore the codebase structure** to find:
+   - Main application files (may be in root, src/, lib/, or other directories)
+   - Example code (check examples/, demos/, scripts/, samples/, notebooks/ subdirectories)
+   - Jupyter notebooks (.ipynb files) that demonstrate usage
+   - Test files that show how to call the code
+   - Library modules that expose APIs
+   - Configuration files that indicate the project's purpose
+
+3. **Identify the programming language(s)** and main frameworks used
+
+4. **Locate actual runnable code**:
+   - Code may NOT be in the root directory
+   - Check subdirectories: examples/, scripts/, samples/, src/, lib/, notebooks/
+   - Look for .py, .js, .ipynb, or other executable files
+   - Even if the root looks empty, there may be rich examples in subdirectories
+
+5. **Understand the intended use case**:
+   - Is this a library (import and call functions)?
+   - Is this a model (load weights and run inference)?
+   - Is this a CLI tool (wrap commands in UI)?
+   - Is this a collection of examples/tutorials (pick one to demonstrate)?
+
+**🚨 IMPORTANT: If you don't find obvious application code in the root, explore deeper!**
+- Many research repos put actual code in examples/ or scripts/
+- README often contains the exact commands/code to run
+- Don't conclude "there's nothing to demo" until you've checked all subdirectories
+
+## Step 1b: Handle Model Downloads (CRITICAL FOR ML PROJECTS!)
+
+**🚨 READ README SECTIONS ABOUT MODELS/CHECKPOINTS/WEIGHTS FIRST! 🚨**
+
+Many ML/AI projects require downloading pretrained models, checkpoints, or data files before they can run. **You MUST check the README for:**
+
+1. **Sections titled:**
+   - "Checkpoint" / "Checkpoints"
+   - "Model Weights" / "Pretrained Models"
+   - "Download" / "Downloads"
+   - "Installation" / "Setup"
+   - "Getting Started" / "Quickstart"
+
+2. **Look for instructions like:**
+   - "Download the model from [HuggingFace URL]"
+   - "Place the checkpoint in the `ckpt/` directory"
+   - "Download pretrained LLM (e.g., Mistral-7B)"
+   - "Required model weights: [list of files]"
+   - Links to HuggingFace model repos
+   - Links to specific model files (.pth, .safetensors, .bin, .ckpt, etc.)
+
+**CRITICAL RULE: ALWAYS use `huggingface_hub` for model downloads**
+
+**✅ CORRECT - Use huggingface_hub:**
+```python
+from huggingface_hub import snapshot_download, hf_hub_download
+import os
+
+# Example 1: Download entire model repository
+MODEL_PATH = "./ckpt/model-name"
+if not os.path.exists(MODEL_PATH):
+    print(f"Downloading model to {MODEL_PATH}...")
+    snapshot_download(
+        repo_id="username/model-name",
+        local_dir=MODEL_PATH,
+        local_dir_use_symlinks=False
+    )
+    print("✓ Model downloaded")
+
+# Example 2: Download specific file
+CHECKPOINT_PATH = "./ckpt/checkpoint.pth"
+if not os.path.exists(CHECKPOINT_PATH):
+    print("Downloading checkpoint...")
+    hf_hub_download(
+        repo_id="username/repo-name",
+        filename="checkpoint.pth",
+        local_dir="./ckpt",
+        local_dir_use_symlinks=False
+    )
+```
+
+**❌ WRONG - Never download at runtime inside functions:**
+```python
+# DON'T DO THIS - downloads on EVERY function call!
+def inference(text):
+    model_path = snapshot_download(...)  # VERY SLOW!
+    model = load_model(model_path)
+    return model(text)
+```
+
+**Key Patterns:**
+
+### Pattern 1: README says "Download from HuggingFace repo"
+```python
+# At module level (runs once at startup)
+from huggingface_hub import snapshot_download
+import os
+
+MODEL_DIR = "./ckpt/model-name"  # Match README's directory structure!
+if not os.path.exists(MODEL_DIR):
+    print("Downloading model...")
+    snapshot_download(
+        repo_id="username/model-name",
+        local_dir=MODEL_DIR,
+        local_dir_use_symlinks=False
+    )
+```
+
+### Pattern 2: README says "Download these specific files"
+```python
+from huggingface_hub import hf_hub_download
+import os
+
+os.makedirs("./ckpt", exist_ok=True)
+
+# Download each required file
+files = ["model.safetensors", "config.json", "tokenizer.json"]
+for filename in files:
+    if not os.path.exists(f"./ckpt/{filename}"):
+        print(f"Downloading {filename}...")
+        hf_hub_download(
+            repo_id="username/model-name",
+            filename=filename,
+            local_dir="./ckpt",
+            local_dir_use_symlinks=False
+        )
+```
+
+### Pattern 3: README mentions pretrained LLM (e.g., Mistral, Llama)
+```python
+# Download the specific LLM mentioned
+LLM_PATH = "./ckpt/Mistral-7B-Instruct-v0.3"
+if not os.path.exists(LLM_PATH):
+    print("Downloading Mistral LLM...")
+    snapshot_download(
+        repo_id="mistralai/Mistral-7B-Instruct-v0.3",
+        local_dir=LLM_PATH,
+        local_dir_use_symlinks=False
+    )
+```
+
+### Pattern 4: README provides HuggingFace download links
+```
+Example link: https://huggingface.co/username/repo/resolve/main/checkpoint.pth
+Extract: repo_id="username/repo", filename="checkpoint.pth"
+```
+
+**CRITICAL RULES:**
+1. **Run downloads at MODULE LEVEL** (not inside functions) - they run once at Space startup
+2. **Always check if files exist first** (for caching with `if not os.path.exists(...)`)
+3. **Match README's directory structure exactly** (if README says "ckpt/", use "./ckpt/")
+4. **Use `local_dir_use_symlinks=False`** to create actual files
+5. **Handle optional models gracefully** (use try/except, continue without them if not found)
+6. **Add `huggingface_hub` to requirements.txt**
+
+**Example - Complete model setup:**
+```python
+print("=" * 60)
+print("Setting up models (first run may take a few minutes)...")
+print("=" * 60)
+
+# Create directories from README
+os.makedirs("./ckpt", exist_ok=True)
+os.makedirs("./relation_graph", exist_ok=True)  # if README mentions it
+
+# Download main checkpoint
+try:
+    if not os.path.exists("./ckpt/checkpoint.pth"):
+        print("Downloading main checkpoint...")
+        hf_hub_download(
+            repo_id="username/project",
+            filename="checkpoint.pth",
+            local_dir="./ckpt",
+            local_dir_use_symlinks=False
+        )
+        print("✓ Checkpoint downloaded")
+except Exception as e:
+    print(f"⚠ Could not download checkpoint: {e}")
+
+# Download optional Mistral (if README mentions it)
+MISTRAL_PATH = "./ckpt/Mistral-7B-Instruct-v0.3"
+try:
+    if not os.path.exists(MISTRAL_PATH):
+        print("Downloading Mistral LLM...")
+        snapshot_download(
+            repo_id="mistralai/Mistral-7B-Instruct-v0.3",
+            local_dir=MISTRAL_PATH,
+            local_dir_use_symlinks=False
+        )
+        print("✓ Mistral downloaded")
+    else:
+        print("✓ Mistral already cached")
+except Exception as e:
+    print(f"⚠ Mistral not found - will skip advanced features")
+    MISTRAL_PATH = None
+
+print("✓ Setup complete!")
+print("=" * 60)
+```
+
+**Why this matters:**
+- ✅ Models download once at Space startup (cached for future runs)
+- ✅ No runtime delays during inference
+- ✅ Handles missing/optional models gracefully
+- ✅ Follows README instructions exactly
+- ✅ Works efficiently on HuggingFace Spaces infrastructure
+
+**Reference documentation:** See `./docs/using-huggingface_hub-for-downloads.md` for more examples.
+
+## Step 2: Requirements for app.py
 
 1. Create a file called app.py in the root directory
 2. The app should use Gradio (import gradio as gr)
 3. **🚨 IMPORT ORDER**: If using GPU/CUDA (torch, tensorflow, etc.), ALWAYS import `spaces` FIRST before any CUDA packages
 4. Create a simple, functional demo that showcases the main features of this project
-5. If this is a machine learning project, create an interface for inference
-6. If this is a utility/tool, create an interface for the main functionality
-7. Include clear labels, descriptions, and examples
-8. Make it beginner-friendly and easy to use
-9. Add error handling for robustness
-10. Use Gradio 5.x best practices (version 5.49.1)
-11. Keep dependencies minimal (prefer built-in libraries when possible)
+5. **Base the demo on README instructions** - if README shows how to use the project, follow those exact steps in your Gradio app
+6. If this is a machine learning project, create an interface for inference
+7. If this is a library/utility, demonstrate the main API functions
+8. If code is in subdirectories (examples/, scripts/), import from those paths
+9. Include clear labels, descriptions, and examples
+10. Make it beginner-friendly and easy to use
+11. Add error handling for robustness
+12. Use Gradio 5.x best practices (version 5.49.1)
+13. Keep dependencies minimal (prefer built-in libraries when possible)
+
+## Handling Different Project Types
+
+### Research/ML Projects with Example Code
+- If main code is in examples/ or scripts/, import from there:
+  ```python
+  import sys
+  sys.path.append('./examples')
+  from example_script import main_function
+  ```
+- Use the example code as a starting point for your Gradio interface
+
+### Library Projects
+- Read the library's main API from src/ or lib/
+- Create a simple demo that calls the main functions
+- Show inputs → processing → outputs
+
+### Model/Weights Projects
+- If project is for loading pretrained models:
+  - Find the model loading code (often in examples/ or README)
+  - Create inference function
+  - Wrap in Gradio interface with appropriate inputs (text, image, etc.)
+
+### Notebooks/Tutorials
+- If project consists mainly of Jupyter notebooks:
+  - Extract the key functionality from a notebook
+  - Convert it to a Python function
+  - Wrap in Gradio interface
+
+### Projects with No Obvious Entry Point
+- Check README for "Usage", "Quickstart", "Getting Started" sections
+- Look for example commands or code snippets
+- Implement those exact steps in your Gradio app
+- If truly nothing is runnable, create a simple showcase/documentation viewer
 
 ## Dependencies (requirements.txt)
 
+**🚨 CRITICAL: File must be named "requirements.txt" (plural) - NOT "requirement.txt" (singular)**
+
 IMPORTANT: Create or update the requirements.txt file with:
+
+**CRITICAL - Gradio Version Pinning:**
 - **gradio==5.49.1** (REQUIRED - use exactly this version)
+- **gradio-client==1.13.3** (REQUIRED - exact version needed for gradio 5.49.1 compatibility)
+  - **NEVER** use gradio_client (underscore) - always use gradio-client (hyphen)
+  - If you see gradio_client or gradio-client with any other version, REMOVE it
+  - Gradio 5.49.1 specifically requires gradio-client==1.13.3 - other versions will fail
+
+**Other Gradio Dependencies:**
 - **httpx version compatibility**: Gradio 5.49.1 depends on httpx<1.0 and >=0.24.1
   - If httpx is found in requirements.txt with any version, REPLACE it with: httpx>=0.24.1,<1.0
   - If httpx is specified as httpx>=1.0 or httpx==1.x.x, change it to: httpx>=0.24.1,<1.0
   - This prevents version conflicts that break Gradio
+
+- **ruff version compatibility**: Gradio 5.49.1 depends on ruff>=0.9.3
+  - If ruff is found in requirements.txt with any version LOWER than 0.9.3, REPLACE it with: ruff>=0.9.3
+  - If ruff is specified as ruff==0.7.4 or any version <0.9.3, change it to: ruff>=0.9.3
+  - Examples of WRONG versions: ruff==0.7.4, ruff>=0.7.0, ruff~=0.8.0
+  - Correct version: ruff>=0.9.3
+  - This prevents version conflicts that break Gradio
+
+- **huggingface-hub version compatibility**: Gradio 5.49.1 depends on huggingface-hub>=0.33.5 and <2.0
+  - If huggingface-hub is found with version <0.33.5, REPLACE with: huggingface-hub==0.36.0
+  - Examples of WRONG versions: huggingface-hub==0.27.1, huggingface-hub>=0.20.0, huggingface-hub==0.30.0
+  - Correct version: huggingface-hub==0.36.0 (or any version >=0.33.5 and <2.0)
+  - Note: Package name uses hyphen, but import uses underscore: `from huggingface_hub import ...`
+  - This prevents conflicts with gradio, datasets, diffusers, and evaluate
+
+**Project Dependencies:**
+- **huggingface-hub==0.36.0** (REQUIRED if project needs to download models/weights from HuggingFace)
+  - Note: Use hyphen (huggingface-hub), not underscore (huggingface_hub)
+  - Gradio 5.49.1 requires huggingface-hub>=0.33.5, we recommend pinning to 0.36.0
+  - If you see older version like huggingface-hub==0.27.1 or <0.33.5, REPLACE with: huggingface-hub==0.36.0
+  - This prevents version conflicts with gradio, datasets, diffusers, and evaluate
+
+- **sentencepiece==0.2.1** (REQUIRED if using sentence-transformers - always add this together)
+  - If you see `sentence-transformers` in requirements, ALWAYS add `sentencepiece==0.2.1`
+  - sentence-transformers needs sentencepiece for tokenization
+  - This prevents "No module named 'sentencepiece'" errors
 - Add other necessary dependencies for the project
 - If using ZeroGPU, add: spaces
 - Keep versions compatible with Python 3.10+
 - Use specific versions when possible for reproducibility
+
+**Example requirements.txt structure:**
+```
+gradio==5.49.1
+gradio-client==1.13.3
+httpx>=0.24.1,<1.0
+ruff>=0.9.3
+huggingface-hub==0.36.0
+spaces
+[other project dependencies...]
+```
+
+**Example with sentence-transformers:**
+```
+gradio==5.49.1
+gradio-client==1.13.3
+httpx>=0.24.1,<1.0
+ruff>=0.9.3
+huggingface-hub==0.36.0
+sentence-transformers>=2.0.0
+sentencepiece==0.2.1
+spaces
+[other dependencies...]
+```
+
+**When to include specific dependencies:**
+- ✅ **huggingface-hub**: If README mentions downloading models/checkpoints from HuggingFace
+- ✅ **sentencepiece**: If using sentence-transformers (ALWAYS include together)
+- ✅ **spaces**: If using ZeroGPU or GPU decorators
+- ❌ Can skip huggingface-hub if project has no model downloads
 
 **FlashAttention Detection:**
 - Check if the project mentions "FlashAttention" or "flash-attention" anywhere (README, code, docs)
@@ -389,7 +708,30 @@ The app should:
 
 If the project doesn't have obvious demo functionality (e.g., it's a library), create a simple demo that shows how to use the main API/functions with example inputs and outputs.
 
-REMEMBER: Create/update requirements.txt with gradio==5.49.1 as the first dependency!
+## FINAL CHECKLIST BEFORE CREATING FILES:
+
+✅ **requirements.txt filename:**
+   - MUST be named "requirements.txt" (plural) - NOT "requirement.txt" (singular)
+   - This is CRITICAL - HuggingFace Spaces will not recognize "requirement.txt"
+
+✅ **Required dependencies:**
+   - gradio==5.49.1 (first dependency)
+   - gradio-client==1.13.3 (exact version)
+   - httpx>=0.24.1,<1.0 (version range)
+   - ruff>=0.9.3 (if ruff is present, upgrade to this minimum version)
+
+✅ **Conditional dependencies:**
+   - If using sentence-transformers → ALWAYS add sentencepiece==0.2.1
+   - If downloading models from HF → add huggingface-hub==0.36.0
+   - If project has older huggingface-hub (<0.33.5) → upgrade to huggingface-hub==0.36.0
+   - If using GPU/ZeroGPU → add spaces
+
+✅ **Model downloads:**
+   - Check README for checkpoint/model download instructions
+   - Use huggingface_hub library (import uses underscore: `from huggingface_hub import ...`)
+   - Package name uses hyphen: `huggingface-hub==0.36.0` in requirements.txt
+   - Download at module level (not inside functions)
+   - Match README directory structure (ckpt/, models/, etc.)
 
 Please proceed with creating the Gradio app and requirements.txt now."""
 

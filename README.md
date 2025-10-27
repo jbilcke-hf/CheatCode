@@ -5,12 +5,21 @@ It detects AI research paper with code and create a Gradio demo Space for them. 
 
 ## Alternative names
 
-AutoVibe, PerpetualCode, CodeSniper, CodeSnipingBot
+Paper2Gradio, AutoVibe, PerpetualCode, CodeSniper, CodeSnipingBot
 
 ## Examples
 
-- I tested GraspAnyRegion, it works: https://huggingface.co/papers/2510.18876
-- not tested yet: https://huggingface.co/papers/2411.01156
+Those examples where generated in one go:
+
+- GraspAnyRegion: https://huggingface.co/papers/2510.18876
+- RAPO: https://huggingface.co/papers/2510.20206
+- AutoPage: https://huggingface.co/papers/2510.19600
+
+## Counter examples
+
+Those examples need an improvement to CheatCode (a feedback loop to fix the bugs):
+
+- Need feedback loop: https://huggingface.co/papers/2411.01156
 
 ## Installation
 
