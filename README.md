@@ -80,7 +80,11 @@ The Gradio interface will launch in your default web browser.
 
 The app supports configuration via environment variables:
 
-- **HF_TOKEN**: Your HuggingFace API token (optional, but recommended for higher rate limits)
+- **HF_TOKEN**: Your HuggingFace API token
+
+The API key optional for local use, but needed for the Space creation step.
+If you forget to put the API key, you won't lose the local project.
+By default it is stored in `./repositories/`.
 
 ### Local Development
 Create a `.env` file in the project root:
